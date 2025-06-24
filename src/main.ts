@@ -10,67 +10,24 @@ document.body.appendChild(canvas)
 canvas.width = window.innerWidth /2
 canvas.height = window.innerHeight /2
 
+const T = new Uniform("time", "float")
 
-
-const fx = new Uniform("time", "float")
 const sinuify = (x:AstNode)=>x.add(1).div(2)
-
 let dist = Pos.x().pow(2).add(Pos.y().pow(2)).pow(.5)
 
 let angle = Pos.x().atan(Pos.y())
 let d = angle.mul(5).sin()
-let r = dist.log().mul(10).sin()
+let r = dist.log().sub(T).mul(10).sin()
 let spot = d.mul(r)
 
-let col = new Vec(spot,0,0,1)
 
+let color = new Vec(spot,spot,0,1)
 
+const disp = new Display(color, canvas)
 
+T.setValue(0.1 * 0.001)
 
-
-
-const disp = new Display(col, canvas)
-
-
-const creategl = (graph: AstNode): WebGLRenderingContext => {
-
-
-  const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
-  const fs = compileShader(graph.compile(), gl.FRAGMENT_SHADER);
-  
-  const program = gl.createProgram()!;
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program)!);
-  }
-  gl.useProgram(program);
-
-
-  const posAttrLoc = gl.getAttribLocation(program, "a_position");
-  const buffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-    -1, -1,
-    1, -1,
-    -1,  1,
-    1,  1,
-  ]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(posAttrLoc);
-  gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
-
-
-  const timeLoc = gl.getUniformLocation(program, "time")
-  const rotLoc = gl.getUniformLocation(program, "rot")
-
-  return gl
-}
-
-
-const gl = creategl (col)
 let  rot = 0.;
-
 const keymap = new Map<String, boolean> ()
 
 document.body.addEventListener("keydown",e=>{
@@ -84,20 +41,12 @@ document.body.addEventListener("keyup", e=>{
 
 function render(time: number) {
 
-  if (keymap.get("ArrowLeft") ?? false){
-    rot += 0.1;
-  }else if (keymap.get("ArrowRight") ?? false){
-    rot -= 0.1;
-  }
-  gl.uniform1f(timeLoc, time * 0.001); // Convert ms to seconds
-  gl.uniform1f(rotLoc, rot)
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  if (keymap.get("ArrowLeft") ?? false) rot += 0.1;
+  else if (keymap.get("ArrowRight") ?? false)rot -= 0.1;
+  T.setValue(time * 0.001)
+  disp.render()
   requestAnimationFrame(render);
 }
-
-
-
-
 
 
 

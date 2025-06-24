@@ -51,7 +51,9 @@ export class Display{
     this.varmap.delete(graph.name)
     this.graph = graph
 
-    
+    console.log(graph);
+  
+  
     {
       const gl = cavas.getContext("webgl")
       if (!gl) throw new Error("webgl not suppported");
@@ -77,8 +79,19 @@ export class Display{
       }`;
 
 
+      const fragShader  =`
+precision mediump float;
+varying vec2 pos;
+${Array.from(this.uniforms.values()).map(u=>`uniform ${u.dtype} ${u.name};`).join("\n")}
+
+void main() {
+  ${Array.from(this.varmap.values()).map(v=>`${v.dtype} ${v.name} = ${v.gen()};`).join("\n  ")}
+  gl_FragColor = ${this.graph.gen()};
+}`
+
+
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
-      const fs = compileShader(this.compile(), gl.FRAGMENT_SHADER);
+      const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
       
       const program = gl.createProgram()!;
       gl.attachShader(program, vs);
@@ -102,35 +115,27 @@ export class Display{
       gl.enableVertexAttribArray(posAttrLoc);
       gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
 
+      console.log(this.uniforms);
+
       this.uniforms.forEach(u=>{
+      
         const loc = gl.getUniformLocation(program, u.name)
-
-        u.setValue = (v)=>{
-          // (u.dtype == "float" ? gl.uniform1f : udt)
-        }
-
+        u.setValue = (...v)=>{
+          ( (u.dtype == "float") ? gl.uniform1f(loc, ...(v as[number,])):
+            (u.dtype == "vec2") ? gl.uniform2f(loc, ...(v as[number,number,])):
+            (u.dtype == "vec3") ? gl.uniform3f(loc, ...(v as[number,number,number,])):
+            gl.uniform4f(loc, ...(v as[number,number,number,number,])));}
       })
+
+      
       
     }
-
-
-
-
   }
 
-  compile (){
-
-
-    return `
-precision mediump float;
-varying vec2 pos;
-${Array.from(this.uniforms.values()).map(u=>`uniform ${u.dtype} ${u.name};`).join("\n")}
-
-void main() {
-  ${Array.from(this.varmap.values()).map(v=>`${v.dtype} ${v.name} = ${v.gen()};`).join("\n  ")}
-  gl_FragColor = ${this.graph.gen()};
-}`
+  render (){ 
+    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
   }
+  
 }
 
 
@@ -257,7 +262,7 @@ export class AstNode extends AST  {
 
 export class Uniform extends AstNode {
 
-  setValue : (value:number) => void = n=>{throw new Error("Uniform not connected to shader yet?")}
+  setValue : (...values:number[]) => void = n=>{console.warn("Uniform not connected to shader yet?")}
   
 
   constructor( name:string, dtype:DType){
