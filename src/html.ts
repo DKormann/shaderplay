@@ -1,4 +1,4 @@
-import { log } from "./helpers"
+
 export type htmlKey = 'innerText'|'onclick'|'children'|'class'|'id'|'contentEditable'|'eventListeners'|'color'|'background'
 
 
