@@ -62,9 +62,7 @@ abstract class AST  {
 
 
 
-  app_binary(op:OP){
-    return (other:AST|number) => new AstNode ([this,other], op)
-  }
+  app_binary(op:OP){ return (other:AST|number) => new AstNode ([this,other], op) }
 
   add = this.app_binary(BinaryInplace("+"))
   sub = this.app_binary(BinaryInplace("-"))
@@ -80,6 +78,16 @@ abstract class AST  {
   log = this.app_unary(UnaryFun("log"))
   pow = this.app_binary(BinaryFun("pow"))
   atan = this.app_binary(BinaryFun("atan"))
+
+
+  clamp = (a:AST|number, b:AST|number) => new AstNode ([this,a,b], TernaryFun("clamp"))
+
+
+
+  x = () => Getter("x", this)
+  y = () => Getter("y", this)
+  z = () => Getter("z", this)
+  w = () => Getter("w", this)
 }
 
 
@@ -136,6 +144,10 @@ function UnaryFun (tag:string){
 
 function BinaryFun (tag:string){
   return new OP(2, (x,y)=> `${tag}(${x.name}, ${y.name})`)
+}
+
+function TernaryFun (tag:string){
+  return new OP(3, (x,y,z)=> `${tag}(${x.name}, ${y.name}, ${z.name})`)
 }
 
 
@@ -205,10 +217,6 @@ export class AstNode extends AST  {
     return this.op.gen(...this.srcs)
   }
 
-  x = () => Getter("x", this)
-  y = () => Getter("y", this)
-  z = () => Getter("z", this)
-  w = () => Getter("w", this)
 
   compile(ctx:Renderer): void {
     this.srcs.forEach(s=>s.compile(ctx))
