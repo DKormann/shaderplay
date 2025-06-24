@@ -6,8 +6,8 @@ export {}
 const canvas =  htmlElement("canvas", "" , "", {id:"glcanvas"}) as HTMLCanvasElement
 document.body.appendChild(canvas)
 
-canvas.width = window.innerWidth /2
-canvas.height = window.innerHeight /2
+canvas.width = 500
+canvas.height = 500
 
 
 
