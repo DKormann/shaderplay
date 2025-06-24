@@ -91,7 +91,7 @@ abstract class AST  {
 }
 
 
-type Data = AST|number
+export type Data = AST|number
 
 
 const VecOp = (dtype:DType) => new OP(-1, (...s:AST[])=> `${dtype}(${s.map(s=>s.name).join(',')})`)
@@ -224,9 +224,9 @@ export class AstNode extends AST  {
   }
 }
 
-export class Uniform extends AstNode {
+export class Input extends AstNode {
 
-  setValue : (...values:number[]) => void = n=>{console.warn("Uniform not connected to shader yet?")}
+  setValue : (...values:number[]) => void = n=>{}
   
 
   constructor( name:string|null = null, dtype:DType = float){
@@ -238,7 +238,7 @@ export class Uniform extends AstNode {
 
 }
 
-export class Varying extends Uniform {compile(ctx: Renderer): void {} }
+export class Varying extends Input {compile(ctx: Renderer): void {} }
 
 
 export const Pos = new Varying("pos", vec2)
@@ -247,7 +247,7 @@ export const Pos = new Varying("pos", vec2)
 
 export class Renderer{
   varmap = new Map<String, AST>()
-  uniforms = new Map<String, Uniform>()
+  uniforms = new Map<String, Input>()
   graph : AstNode
 
   gl:WebGLRenderingContext

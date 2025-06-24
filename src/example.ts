@@ -1,5 +1,5 @@
 import { htmlElement } from "./html";
-import { AstNode, Renderer, Pos, Uniform, Vec, dtypes } from "./shader";
+import { AstNode, Renderer, Pos, Input, Vec, dtypes, Const,Data } from "./shader";
 
 export {}
 
@@ -9,34 +9,52 @@ document.body.appendChild(canvas)
 canvas.width = window.innerWidth /2
 canvas.height = window.innerHeight /2
 
-const T = new Uniform("time", dtypes.float)
-const Rot = new Uniform("rot", dtypes.float)
 
 
-let dist = Pos.x().pow(2) .add(Pos.y().pow(2)).pow(.5)
 
-let angle = Pos.x()
-.atan(Pos.y())
-.add(Rot.mul(0.5))
-let d = angle.mul(5).sin()
-let r = dist.log().sub(T).mul(10).sin()
-let spot = d.mul(r).clamp(0,1)
-
-let color = Vec([ T.sin(), (T.add(3).sin().add(r.mul(0.1))), (T.add(6).sin().add(r.mul(0.1))), ])
+const distance = (Pos:AstNode)=>{
+  return Pos.x().pow(2).add(Pos.y().pow(2)).pow(.5)
+}
 
 
-const renderer = new Renderer( Vec([color.mul(spot),1]), canvas)
+const Mix = (t:AstNode, x:AstNode, y:AstNode)=>{
+  t=t.clamp(0,1)
+  return x.mul(I.sub(t)).add(y.mul(t))
+}
 
-let  rot = 0.;
+const I = new Const(1)
+
+const T = new Input()
+const Rot = new Input()
+
+
+let angle = Pos.x().atan(Pos.y().mul(-1))
+
+let r = distance(Pos).log().mul(-1)
+
+let tiles = angle.add(Rot.mul(0.5)).mul(5).sin()
+.mul(r.mul(5)
+.add(T.mul(5)).sin()).clamp(0,1)
+
+let color = Vec([1,3,6])
+.add(T.mul(2.))
+.add(r.mul(0.1))
+.sin().mul(tiles)
+
+let relpos = Vec([r,angle])
+
+const PlayerAlpha = distance(relpos.sub(Vec([.5,0]))).mul(-8).add(2).clamp(0,1)
+color = Mix(PlayerAlpha, color, Vec([1,0,0]))
+const renderer = new Renderer( Vec([color, 1]), canvas)
+
+let rot = 0.;
 const keymap = new Map<String, boolean> ()
 
 document.body.addEventListener("keydown",e=>{ keymap.set(e.key, true)})
 document.body.addEventListener("keyup", e=>{ keymap.set(e.key, false)})
 
-
 let lasttime = 0;
 let extraspeed = 1.
-
 let mytime = 0
 
 
