@@ -1,13 +1,41 @@
 
 let varcounter = 0;
 
-type DType = "float" | "vec2" | "vec3" | "vec4"
+
+class DType{
+  size:number
+  constructor(size:number){
+    this.size = size
+
+  }
+
+  toString(){
+    if (this.size == 1){
+      return "float"
+    }
+    return "vec"+this.size
+  }
+  choose<T>(...args:T[]):T{
+    return args[this.size-1]
+  }
+
+  eq(other:DType){
+    return this.size == other.size
+  }
+}
+
+const float = new DType(1)
+const vec2 = new DType(2)
+const vec3 = new DType(3)
+const vec4 = new DType(4)
+
+export const dtypes = {float, vec2, vec3, vec4}
 
 abstract class AST  {
   name:string
   dtype:DType
 
-  constructor(name:string|null = null, dtype:DType = "float"){
+  constructor(name:string|null = null, dtype:DType = float){
     if (name == null){
       name = "x"+String(varcounter)
       varcounter += 1
@@ -20,7 +48,7 @@ abstract class AST  {
     return this.name
   }
 
-  compile (shader:Display){
+  compile (shader:Renderer){
     if (shader.varmap.has(this.name)){
       return
     }
@@ -31,11 +59,185 @@ abstract class AST  {
   toString(){
     return "AST"
   }
+
+
+
+  app_binary(op:OP){
+    return (other:AST|number) => new AstNode ([this,other], op)
+  }
+
+  add = this.app_binary(BinaryInplace("+"))
+  sub = this.app_binary(BinaryInplace("-"))
+  mul = this.app_binary(BinaryInplace("*"))
+  div = this.app_binary(BinaryInplace("/"))
+
+  app_unary(op:OP){
+    return ()=> new AstNode([this], op)
+  }
+
+  sin = this.app_unary(UnaryFun("sin"))
+  cos = this.app_unary(UnaryFun("cos"))
+  log = this.app_unary(UnaryFun("log"))
+  pow = this.app_binary(BinaryFun("pow"))
+  atan = this.app_binary(BinaryFun("atan"))
+}
+
+
+type Data = AST|number
+
+
+const VecOp = (dtype:DType) => new OP(-1, (...s:AST[])=> `${dtype}(${s.map(s=>s.name).join(',')})`)
+
+export const Vec = (srcs:Data[]):AstNode =>{
+
+  console.log(srcs);
+  
+  let size = srcs.map(s=> typeof s == "number" ? upcast(s, float) : s).reduce((a:number,b)=> a + b.dtype.size, 0)
+  if (size > 4) throw new Error("too many args")
+
+  const dtype = [float, vec2, vec3, vec4][size-1]
+  const res = new AstNode(srcs, VecOp(dtype))
+  res.dtype = dtype
+  return res
+
+}
+
+const upcast = (d:Data, dtype:DType = float) =>{
+  if (typeof d == "number"){d = new Const(d)}
+  if (d.dtype == dtype) return d
+  if (d.dtype != float) throw new Error("cant upcast:"+d.dtype+"->"+dtype);
+  return Vec(Array.from({length: dtype.size}, (_,i)=>d))
+}
+
+
+class OP {
+  arity : number
+  gen : (...srcs:Data[]) => string
+  constructor (arity:number, gen: (...srcs:(AST)[]) => string){
+    this.arity = arity
+    this.gen = (...s) => gen(...s.map(s=>typeof s == "number" ? new Const(s) : s))
+  }
+
+  toString(){
+    return this.gen(...Array.from({length: this.arity}, (_,i)=>new Const(i)))
+  }
 }
 
 
 
-export class Display{
+
+function BinaryInplace (tag:string){
+  return new OP(2, (a,b)=> `${a.name} ${tag} ${b.name}`)
+}
+
+function UnaryFun (tag:string){
+  return new OP(1, x=> `${tag}(${x.name})`)
+}
+
+function BinaryFun (tag:string){
+  return new OP(2, (x,y)=> `${tag}(${x.name}, ${y.name})`)
+}
+
+
+const field_names = ['add']
+
+type Field = "x" | "y" | "z" | "w"
+
+
+function Getter (field: Field, node: AST) {
+
+  const n = ["x","y","z","w"].indexOf(field)
+
+  if (n > node.dtype.size-1){
+    throw new Error("field out of bounds")
+  }
+  
+  const op = new OP(1, x=> `${x.name}.${field}`)
+  
+  const res = new AstNode([node], op)
+  res.dtype = float
+  return res
+}
+
+
+
+export class Const extends AST {
+  value:number
+  constructor(value:number){
+    let name = `${value}`
+    if (!name.includes(".")){
+      name += "."
+    }
+
+    super(name,float)
+    this.value = value * 1.0
+  }
+  compile(shader: Renderer): void {}
+  gen() : string {
+    return this.name
+  }
+}
+
+
+export class AstNode extends AST  {
+  srcs : AST[]
+  op: OP
+
+  constructor (_srcs: (AST|number)[], op :OP, name:string|null = null, dtype:DType|null = null){
+
+    let srcs = _srcs.map(s=>{
+
+      if(typeof (s) == "number"){
+        return new Const(s)
+      }
+      return s
+    })as AST[]
+
+    if (dtype == null) {
+      dtype = srcs.map(s=>s.dtype).reduce((a,b)=>a.size > b.size ? a : b, float)
+    }
+    super(name,dtype)
+    this.srcs = srcs
+    this.op = op
+  }
+
+  gen(){
+    return this.op.gen(...this.srcs)
+  }
+
+  x = () => Getter("x", this)
+  y = () => Getter("y", this)
+  z = () => Getter("z", this)
+  w = () => Getter("w", this)
+
+  compile(ctx:Renderer): void {
+    this.srcs.forEach(s=>s.compile(ctx))
+    super.compile(ctx)
+  }
+}
+
+export class Uniform extends AstNode {
+
+  setValue : (...values:number[]) => void = n=>{console.warn("Uniform not connected to shader yet?")}
+  
+
+  constructor( name:string|null = null, dtype:DType = float){
+    super([], new OP(0, ()=>"name"),name, dtype)
+  }
+  compile(ctx: Renderer): void {
+    ctx.uniforms.set(this.name, this)
+  }
+
+}
+
+export class Varying extends Uniform {compile(ctx: Renderer): void {} }
+
+
+export const Pos = new Varying("pos", vec2)
+
+
+
+export class Renderer{
   varmap = new Map<String, AST>()
   uniforms = new Map<String, Uniform>()
   graph : AstNode
@@ -44,7 +246,7 @@ export class Display{
 
   constructor(graph:AstNode, cavas:HTMLCanvasElement){
 
-    if (graph.dtype != "vec4"){
+    if (graph.dtype != vec4){
       throw `frag shader must result in vec4 got ${graph.dtype}`
     }
     graph.compile(this)
@@ -121,14 +323,11 @@ void main() {
       
         const loc = gl.getUniformLocation(program, u.name)
         u.setValue = (...v)=>{
-          ( (u.dtype == "float") ? gl.uniform1f(loc, ...(v as[number,])):
-            (u.dtype == "vec2") ? gl.uniform2f(loc, ...(v as[number,number,])):
-            (u.dtype == "vec3") ? gl.uniform3f(loc, ...(v as[number,number,number,])):
+          ( (u.dtype == float) ? gl.uniform1f(loc, ...(v as[number,])):
+            (u.dtype == vec2) ? gl.uniform2f(loc, ...(v as[number,number,])):
+            (u.dtype == vec3) ? gl.uniform3f(loc, ...(v as[number,number,number,])):
             gl.uniform4f(loc, ...(v as[number,number,number,number,])));}
-      })
-
-      
-      
+      })      
     }
   }
 
@@ -137,169 +336,3 @@ void main() {
   }
   
 }
-
-
-
-class OP {
-  arity : number
-  gen : (...srcs:(AST|number)[]) => string
-  constructor (arity:number, gen: (...srcs:(AST)[]) => string){
-    this.arity = arity
-
-    this.gen = (...s) => gen(...s.map(s=>typeof s == "number" ? new Const(s) : s))
-  }
-}
-
-
-function BinaryInplace (tag:string){
-  return new OP(2, (a,b)=> `${a.name} ${tag} ${b.name}`)
-}
-
-function UnaryFun (tag:string){
-  return new OP(1, x=> `${tag}(${x.name})`)
-}
-
-function BinaryFun (tag:string){
-  return new OP(2, (x,y)=> `${tag}(${x.name}, ${y.name})`)
-}
-
-
-const field_names = ['add']
-
-type Field = "x" | "y" | "z"
-
-
-function Getter (field: Field) {
-  return new OP(1, x=> `${x.name}.${field}`)
-}
-
-
-export class Const extends AST {
-  value:number
-  constructor(value:number){
-    let name = `${value}`
-    if (!name.includes(".")){
-      name += "."
-    }
-
-    super(name,"float")
-    this.value = value * 1.0
-  }
-  compile(shader: Display): void {}
-  gen() : string {
-    return this.name
-  }
-}
-
-
-export class AstNode extends AST  {
-  srcs : AST[]
-  op: OP
-
-  constructor (_srcs: (AST|number)[], op :OP, name:string|null = null, dtype:DType = "float"){
-
-    let srcs = _srcs.map(s=>{
-
-      if(typeof (s) == "number"){
-        return new Const(s)
-      }
-      return s
-    })as AST[]
-
-    if (srcs.length && srcs.filter(s=>s.dtype != srcs[0].dtype).length){
-      throw new Error(`dtypes not compatible ${srcs.map(s=>s.dtype)}`);
-    }
-    super(name,dtype)
-    if (srcs.length != op.arity){
-      throw "must match arity"
-    }
-    this.srcs = srcs
-    this.op = op
-  }
-
-  app_binary(op:OP){
-    return (other:AST|number) => new AstNode ([this,other], op)
-  }
-
-  add = this.app_binary(BinaryInplace("+"))
-  sub = this.app_binary(BinaryInplace("-"))
-  mul = this.app_binary(BinaryInplace("*"))
-  div = this.app_binary(BinaryInplace("/"))
-
-  app_unary(op:OP){
-    return ()=> new AstNode([this], op)
-  }
-
-  sin = this.app_unary(UnaryFun("sin"))
-  cos = this.app_unary(UnaryFun("cos"))
-  log = this.app_unary(UnaryFun("log"))
-  pow = this.app_binary(BinaryFun("pow"))
-  atan = this.app_binary(BinaryFun("atan"))
-
-  gen(){
-    return this.op.gen(...this.srcs)
-  }
-
-  compile(ctx:Display): void {
-    this.srcs.forEach(s=>s.compile(ctx))
-    super.compile(ctx)
-  }
-
-  x(){
-    if (this.dtype == "float"){
-      throw new Error("cant x on float")
-    }
-    return new AstNode([this], Getter("x"))
-  }
-
-  y(){
-    if (this.dtype == "float"){
-      throw new Error("cant y on float")
-    }
-    return new AstNode([this], Getter("y"))
-  }
-}
-
-export class Uniform extends AstNode {
-
-  setValue : (...values:number[]) => void = n=>{console.warn("Uniform not connected to shader yet?")}
-  
-
-  constructor( name:string, dtype:DType){
-    super([], new OP(0, ()=>name),name, dtype)
-  }
-  compile(ctx: Display): void {
-    ctx.uniforms.set(this.name, this)
-  }
-
-}
-
-export class Varying extends Uniform {
-
-  compile(ctx: Display): void {
-  }
-
-}
-
-
-export const Pos = new Varying("pos", "vec2")
-
-export class Vec extends AstNode {
-  constructor (...srcs:(AST|number)[]){
-    const dtype:DType = srcs.length == 2 ? "vec2" : srcs.length == 3 ? "vec3" : srcs.length == 4 ? "vec4" : "float"
-    if (dtype == "float") throw "not enough args"
-
-    super(
-      srcs,
-      new OP(srcs.length, (...s:AST[]) => `${dtype}(${s.map(s=>s.name).join(',')})`),
-      null,
-      dtype
-    )
-  }
-}
-
-
-
-
-
-
