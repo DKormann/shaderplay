@@ -76,13 +76,33 @@ abstract class AST  {
   sin = this.app_unary(UnaryFun("sin"))
   cos = this.app_unary(UnaryFun("cos"))
   log = this.app_unary(UnaryFun("log"))
+
   pow = this.app_binary(BinaryFun("pow"))
   atan = this.app_binary(BinaryFun("atan"))
 
 
+  sum(){
+    let res = this.x()
+    for (let i = 1; i < this.dtype.size; i++) {
+      res = res.add([this.x,this.y,this.z,this.w][i]())
+    }
+    return res
+  }
+
+  sqrt(){
+    return this.pow(.5)
+  }
+
+  length(){
+    return this.mul(this).sum().sqrt()
+  }
+
+  normalize(){
+    return this.div(this.length())
+  }
+
+
   clamp = (a:AST|number, b:AST|number) => new AstNode ([this,a,b], TernaryFun("clamp"))
-
-
 
   x = () => Getter("x", this)
   y = () => Getter("y", this)
@@ -98,8 +118,7 @@ const VecOp = (dtype:DType) => new OP(-1, (...s:AST[])=> `${dtype}(${s.map(s=>s.
 
 export const Vec = (srcs:Data[]):AstNode =>{
 
-  console.log(srcs);
-  
+
   let size = srcs.map(s=> typeof s == "number" ? upcast(s, float) : s).reduce((a:number,b)=> a + b.dtype.size, 0)
   if (size > 4) throw new Error("too many args")
 
@@ -260,10 +279,8 @@ export class Renderer{
     graph.compile(this)
     this.varmap.delete(graph.name)
     this.graph = graph
+  
 
-    console.log(graph);
-  
-  
     {
       const gl = cavas.getContext("webgl")
       if (!gl) throw new Error("webgl not suppported");
@@ -299,6 +316,8 @@ void main() {
   gl_FragColor = ${this.graph.gen()};
 }`
 
+      
+
 
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
       const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
@@ -325,7 +344,7 @@ void main() {
       gl.enableVertexAttribArray(posAttrLoc);
       gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
 
-      console.log(this.uniforms);
+
 
       this.uniforms.forEach(u=>{
       

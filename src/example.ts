@@ -3,19 +3,17 @@ import { AstNode, Renderer, Pos, Input, Vec, dtypes, Const,Data } from "./shader
 
 export {}
 
+
+document.body.appendChild(htmlElement("p","USE ARROW BUTTONS", ""))
 const canvas =  htmlElement("canvas", "" , "", {id:"glcanvas"}) as HTMLCanvasElement
 document.body.appendChild(canvas)
 
 canvas.width = 500
 canvas.height = 500
 
-
-
-
 const distance = (Pos:AstNode)=>{
   return Pos.x().pow(2).add(Pos.y().pow(2)).pow(.5)
 }
-
 
 const Mix = (t:AstNode, x:AstNode, y:AstNode)=>{
   t=t.clamp(0,1)
@@ -45,10 +43,15 @@ let relpos = Vec([r,angle])
 
 const PlayerAlpha = distance(relpos.sub(Vec([.5,0]))).mul(-8).add(2).clamp(0,1)
 color = Mix(PlayerAlpha, color, Vec([1,0,0]))
+
+
 const renderer = new Renderer( Vec([color, 1]), canvas)
 
+
+
+
 let rot = 0.;
-const keymap = new Map<String, boolean> ()
+const keymap = new Map<String, boolean>()
 
 document.body.addEventListener("keydown",e=>{ keymap.set(e.key, true)})
 document.body.addEventListener("keyup", e=>{ keymap.set(e.key, false)})
