@@ -106,7 +106,7 @@ export class Display{
         const loc = gl.getUniformLocation(program, u.name)
 
         u.setValue = (v)=>{
-          (u.dtype == "float" ? gl.uniform1f : udt)
+          // (u.dtype == "float" ? gl.uniform1f : udt)
         }
 
       })
