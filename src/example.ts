@@ -3,6 +3,10 @@ import { AstNode, Renderer, Pos, Input, Vec, dtypes, Const,Data } from "./shader
 
 export {}
 
+import "./blackhole"
+
+
+
 
 document.body.appendChild(htmlElement("p","USE ARROW BUTTONS", ""))
 const canvas =  htmlElement("canvas", "" , "", {id:"glcanvas"}) as HTMLCanvasElement
@@ -34,18 +38,18 @@ let tiles = angle.add(Rot.mul(0.5)).mul(5).sin()
 .mul(r.mul(5)
 .add(T.mul(5)).sin()).clamp(0,1)
 
-let color = Vec([1,3,6])
+let color = Vec(1,3,6)
 .add(T.mul(2.))
 .add(r.mul(0.1))
 .sin().mul(tiles)
 
-let relpos = Vec([r,angle])
+let relpos = Vec(r,angle)
 
-const PlayerAlpha = distance(relpos.sub(Vec([.5,0]))).mul(-8).add(2).clamp(0,1)
-color = Mix(PlayerAlpha, color, Vec([1,0,0]))
+const PlayerAlpha = distance(relpos.sub(Vec(.5,0))).mul(-8).add(2).clamp(0,1)
+color = Mix(PlayerAlpha, color, Vec(1,0,0))
 
 
-const renderer = new Renderer( Vec([color, 1]), canvas)
+const renderer = new Renderer( Vec(color, 1), canvas)
 
 
 
@@ -79,5 +83,5 @@ function render(time: number) {
   requestAnimationFrame(render);
 }
 
-requestAnimationFrame(render);
+// requestAnimationFrame(render);
 

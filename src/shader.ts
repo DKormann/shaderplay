@@ -10,9 +10,7 @@ class DType{
   }
 
   toString(){
-    if (this.size == 1){
-      return "float"
-    }
+    if (this.size == 1) return "float"
     return "vec"+this.size
   }
   choose<T>(...args:T[]):T{
@@ -31,258 +29,89 @@ const vec4 = new DType(4)
 
 export const dtypes = {float, vec2, vec3, vec4}
 
-abstract class AST  {
-  name:string
+
+
+type Compiler = (ast:AST) => string
+
+
+const  WebGlCompiler : Compiler = (ast)=>{
+
+  return "GLSL"
+  
+}
+
+
+type UOp = "sin" | "cos" | "tan" | "log" | "exp" | "pow" | "atan"
+type BOp = "add" | "sub" | "mul" | "div" | "atan"
+type TOp = "clamp"
+type ZOp = "const"
+
+type Op = UOp | BOp | TOp | ZOp
+
+
+type AstArg = {op:ZOp, srcs:[]}
+| {op:UOp, srcs:[AST]}
+| {op:BOp, srcs:[AST,AST]}
+| {op:TOp, srcs:[AST,AST,AST]}
+
+
+export abstract class AST {
+
   dtype:DType
+  srcs:AST[] = []
+  name:string | null = null
 
-  constructor(name:string|null = null, dtype:DType = float){
+  constructor(args:AstArg, dtype:DType = float, name:string | null = null){
+    this.name = args.op
+    this.dtype = dtype
+    this.srcs = args.srcs
+
     if (name == null){
-      name = "x"+String(varcounter)
-      varcounter += 1
+      name = "var"+varcounter++
     }
-    this.name= name
-    this.dtype=dtype
-  }
-
-  gen(){
-    return this.name
-  }
-
-  compile (shader:Renderer){
-    if (shader.varmap.has(this.name)){
-      return
-    }
-    shader.varmap.set(this.name, this)
-
-  }
-
-  toString(){
-    return "AST"
-  }
-
-
-
-  app_binary(op:OP){ return (other:AST|number) => new AstNode ([this,other], op) }
-
-  add = this.app_binary(BinaryInplace("+"))
-  sub = this.app_binary(BinaryInplace("-"))
-  mul = this.app_binary(BinaryInplace("*"))
-  div = this.app_binary(BinaryInplace("/"))
-
-  app_unary(op:OP){
-    return ()=> new AstNode([this], op)
-  }
-
-  sin = this.app_unary(UnaryFun("sin"))
-  cos = this.app_unary(UnaryFun("cos"))
-  log = this.app_unary(UnaryFun("log"))
-
-  pow = this.app_binary(BinaryFun("pow"))
-  atan = this.app_binary(BinaryFun("atan"))
-
-
-  sum(){
-    let res = this.x()
-    for (let i = 1; i < this.dtype.size; i++) {
-      res = res.add([this.x,this.y,this.z,this.w][i]())
-    }
-    return res
-  }
-
-  sqrt(){
-    return this.pow(.5)
-  }
-
-  length(){
-    return this.mul(this).sum().sqrt()
-  }
-
-  normalize(){
-    return this.div(this.length())
-  }
-
-
-  clamp = (a:AST|number, b:AST|number) => new AstNode ([this,a,b], TernaryFun("clamp"))
-
-  x = () => Getter("x", this)
-  y = () => Getter("y", this)
-  z = () => Getter("z", this)
-  w = () => Getter("w", this)
-}
-
-
-export type Data = AST|number
-
-
-const VecOp = (dtype:DType) => new OP(-1, (...s:AST[])=> `${dtype}(${s.map(s=>s.name).join(',')})`)
-
-export const Vec = (srcs:Data[]):AstNode =>{
-
-
-  let size = srcs.map(s=> typeof s == "number" ? upcast(s, float) : s).reduce((a:number,b)=> a + b.dtype.size, 0)
-  if (size > 4) throw new Error("too many args")
-
-  const dtype = [float, vec2, vec3, vec4][size-1]
-  const res = new AstNode(srcs, VecOp(dtype))
-  res.dtype = dtype
-  return res
-
-}
-
-const upcast = (d:Data, dtype:DType = float) =>{
-  if (typeof d == "number"){d = new Const(d)}
-  if (d.dtype == dtype) return d
-  if (d.dtype != float) throw new Error("cant upcast:"+d.dtype+"->"+dtype);
-  return Vec(Array.from({length: dtype.size}, (_,i)=>d))
-}
-
-
-class OP {
-  arity : number
-  gen : (...srcs:Data[]) => string
-  constructor (arity:number, gen: (...srcs:(AST)[]) => string){
-    this.arity = arity
-    this.gen = (...s) => gen(...s.map(s=>typeof s == "number" ? new Const(s) : s))
-  }
-
-  toString(){
-    return this.gen(...Array.from({length: this.arity}, (_,i)=>new Const(i)))
+    this.name = name
+    
   }
 }
 
 
 
 
-function BinaryInplace (tag:string){
-  return new OP(2, (a,b)=> `${a.name} ${tag} ${b.name}`)
-}
-
-function UnaryFun (tag:string){
-  return new OP(1, x=> `${tag}(${x.name})`)
-}
-
-function BinaryFun (tag:string){
-  return new OP(2, (x,y)=> `${tag}(${x.name}, ${y.name})`)
-}
-
-function TernaryFun (tag:string){
-  return new OP(3, (x,y,z)=> `${tag}(${x.name}, ${y.name}, ${z.name})`)
-}
+// export const Pos = new Varying("pos", vec2)
 
 
-const field_names = ['add']
-
-type Field = "x" | "y" | "z" | "w"
-
-
-function Getter (field: Field, node: AST) {
-
-  const n = ["x","y","z","w"].indexOf(field)
-
-  if (n > node.dtype.size-1){
-    throw new Error("field out of bounds")
-  }
-  
-  const op = new OP(1, x=> `${x.name}.${field}`)
-  
-  const res = new AstNode([node], op)
-  res.dtype = float
-  return res
-}
-
-
-
-export class Const extends AST {
-  value:number
-  constructor(value:number){
-    let name = `${value}`
-    if (!name.includes(".")){
-      name += "."
-    }
-
-    super(name,float)
-    this.value = value * 1.0
-  }
-  compile(shader: Renderer): void {}
-  gen() : string {
-    return this.name
-  }
-}
-
-
-export class AstNode extends AST  {
-  srcs : AST[]
-  op: OP
-
-  constructor (_srcs: (AST|number)[], op :OP, name:string|null = null, dtype:DType|null = null){
-
-    let srcs = _srcs.map(s=>{
-
-      if(typeof (s) == "number"){
-        return new Const(s)
-      }
-      return s
-    })as AST[]
-
-    if (dtype == null) {
-      dtype = srcs.map(s=>s.dtype).reduce((a,b)=>a.size > b.size ? a : b, float)
-    }
-    super(name,dtype)
-    this.srcs = srcs
-    this.op = op
-  }
-
-  gen(){
-    return this.op.gen(...this.srcs)
-  }
-
-
-  compile(ctx:Renderer): void {
-    this.srcs.forEach(s=>s.compile(ctx))
-    super.compile(ctx)
-  }
-}
-
-export class Input extends AstNode {
-
-  setValue : (...values:number[]) => void = n=>{}
-  
-
-  constructor( name:string|null = null, dtype:DType = float){
-    super([], new OP(0, ()=>"name"),name, dtype)
-  }
-  compile(ctx: Renderer): void {
-    ctx.uniforms.set(this.name, this)
-  }
-
-}
-
-export class Varying extends Input {compile(ctx: Renderer): void {} }
-
-
-export const Pos = new Varying("pos", vec2)
-
+// ********** RENDERER **********
 
 
 export class Renderer{
   varmap = new Map<String, AST>()
   uniforms = new Map<String, Input>()
-  graph : AstNode
+
+  graph : AST
 
   gl:WebGLRenderingContext
 
-  constructor(graph:AstNode, cavas:HTMLCanvasElement){
+  constructor(graph:AST, cavas:HTMLCanvasElement){
+    
 
     if (graph.dtype != vec4){
       throw `frag shader must result in vec4 got ${graph.dtype}`
     }
+
+
     graph.compile(this)
+
+    console.log("graph compiled");
+    
+
     this.varmap.delete(graph.name)
     this.graph = graph
   
 
     {
-      const gl = cavas.getContext("webgl")
+      const gl = cavas.getContext("webgl2")
+      console.log(gl);
+      
       if (!gl) throw new Error("webgl not suppported");
       this.gl = gl
       
@@ -305,6 +134,10 @@ export class Renderer{
         gl_Position = vec4(a_position, 0, 1);
       }`;
 
+      console.log("vertex shader compiled");
+      
+      
+
 
       const fragShader  =`
 precision mediump float;
@@ -316,8 +149,11 @@ void main() {
   gl_FragColor = ${this.graph.gen()};
 }`
 
-      
+      console.log("frag shader compiled");
 
+      console.log(fragShader);
+
+      
 
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
       const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
@@ -335,12 +171,7 @@ void main() {
       const posAttrLoc = gl.getAttribLocation(program, "a_position");
       const buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-        -1, -1,
-        1, -1,
-        -1,  1,
-        1,  1,
-      ]), gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
       gl.enableVertexAttribArray(posAttrLoc);
       gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
 
