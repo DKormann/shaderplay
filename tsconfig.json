@@ -9,10 +9,9 @@
       "ESNext.BigInt"
     ],
     "moduleResolution": "Node",
-    "strict": true,
+    "strict": false,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
     "esModuleInterop": true,
     "noEmit": true,
     "skipLibCheck": true

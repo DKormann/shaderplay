@@ -36,7 +36,7 @@ const upcast = (a:Data, vectype:VecType|null = null) :AST => {
   if (typeof a == "number") a = {op:"const", value:a, vectype:1, srcs:[]}
   if (a.vectype == vectype) return a
   if (a.vectype != 1) throw new Error("upcast not implemented for dtype " + vectype)
-  return {op:"vec", srcs:Array.from({length: vectype}, ()=>a), vectype:vectype}
+  return {op:"vec", srcs:Array.from({length: vectype}, ()=>a) as AST[], vectype:vectype}
 }
 
 const datatype = (a:Data):VecType => {
@@ -192,7 +192,7 @@ const WebGlCompiler = (nodes:ProgramNode[]) =>{
     } 
     if (op == "vec") return `vec${node.ast.vectype}(${node.srcs.map(x=>rep(x)).join(",")})`
     if (op == "index") return `${rep(node.srcs[0])}.${["x","y","z","w"][node.ast.value]}`
-    if (op == "add") return `(${rep(node.srcs[0])} + ${rep(node.srcs[1])})`
+    if (op == "add") return `( ${rep(node.srcs[0])} + ${rep(node.srcs[1])})`
     if (op == "sub") return `(${rep(node.srcs[0])} - ${rep(node.srcs[1])})`
     if (op == "mul") return `(${rep(node.srcs[0])} * ${rep(node.srcs[1])})`
     if (op == "div") return `(${rep(node.srcs[0])} / ${rep(node.srcs[1])})`
