@@ -104,6 +104,12 @@ export const sum = (x:Data) => {
 export const length = (x:Data) => sqrt(sum(mul(x,x)))
 export const normalize = (x:Data) => div(x, length(x))
 
+const tanh = (x:Data) =>{
+  // return 2.0 / (1.0 + exp(-2.0 * x)) - 1.0;
+
+  return sub(div(2,add(1, exp(mul(x,-2)))),1)
+}
+
 
 
 const VecAst = (a:VecData) => a instanceof Vector ? a.ast : a
@@ -137,6 +143,7 @@ export class Vector{
   normalize(){return new Vector(normalize(this.ast))}
   sum(){return new Vector(sum(this.ast))}
   sqrt(){return new Vector(sqrt(this.ast))}
+  tanh(){return new Vector(tanh(this.ast))}
 }
 
 
@@ -155,9 +162,9 @@ const  Linearize = (ast:AST) => {
       res.usecount += 1
       return res
     }
-
+    const srcs = ast.srcs.map(walkast)
     const name = ast.op == "varying" ? ast.name : "x" + nodes.length
-    const node = {ast, srcs: ast.srcs.map(walkast), name, usecount: 1}
+    const node = {ast, srcs, name, usecount: 1}
     nodes.push(node)
     nodesmap.set(ast, node)
     return node
@@ -177,13 +184,18 @@ const WebGlCompiler = (nodes:ProgramNode[]) =>{
   function render(node:ProgramNode):string{
     const op = node.ast.op
     if (op == "uniform" || op == "varying") return node.name
-    if (op == "const") return node.ast.value.toString()
+    if (op == "const") {
+
+      let res = node.ast.value.toString()
+      if (!res.includes(".")) res += ".0"
+      return res
+    } 
     if (op == "vec") return `vec${node.ast.vectype}(${node.srcs.map(x=>rep(x)).join(",")})`
     if (op == "index") return `${rep(node.srcs[0])}.${["x","y","z","w"][node.ast.value]}`
-    if (op == "add") return `${rep(node.srcs[0])} + ${rep(node.srcs[1])}`
-    if (op == "sub") return `${rep(node.srcs[0])} - ${rep(node.srcs[1])}`
-    if (op == "mul") return `${rep(node.srcs[0])} * ${rep(node.srcs[1])}`
-    if (op == "div") return `${rep(node.srcs[0])} / ${rep(node.srcs[1])}`
+    if (op == "add") return `(${rep(node.srcs[0])} + ${rep(node.srcs[1])})`
+    if (op == "sub") return `(${rep(node.srcs[0])} - ${rep(node.srcs[1])})`
+    if (op == "mul") return `(${rep(node.srcs[0])} * ${rep(node.srcs[1])})`
+    if (op == "div") return `(${rep(node.srcs[0])} / ${rep(node.srcs[1])})`
     return `${op}(${node.srcs.map(x=>rep(x)).join(", ")})`
   }
 
@@ -193,8 +205,6 @@ const WebGlCompiler = (nodes:ProgramNode[]) =>{
     return `${["float","vec2","vec3","vec4"][n.ast.vectype-1]} ${n.name} = ${render(n)};\n`
   }).join("") + "gl_FragColor = " +render(nodes[nodes.length-1])
 }
-
-
 
 
 
@@ -212,7 +222,7 @@ export class Input extends Vector{
 
 const Varying = (name:string, vectype:VecType) => new Vector({op:"varying", name, vectype, srcs:[]})
 
-export const Pos = Varying("Pos", 2)
+export const Pos = Varying("pos", 2)
 export const Time = new Input(1)
 
 
@@ -226,10 +236,7 @@ console.log(WebGlCompiler(Linearize(ss.ast)))
 
 
 export class Renderer{
-
-
   gl:WebGLRenderingContext
-
   constructor(graph:Vector, cavas:HTMLCanvasElement){
     
     if (graph.vectype < 3){
@@ -240,6 +247,8 @@ export class Renderer{
       graph = new Vector(graph, 1)
     }
     const nodes = Linearize(graph.ast)
+    console.log(nodes);
+    
     const uniforms = nodes.filter(x=>x.ast.op == "uniform")
   
     {
