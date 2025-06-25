@@ -150,7 +150,7 @@ export class Vector{
 
 type ProgramNode = {ast:AST, srcs: ProgramNode[], name:string, usecount: number}
 
-const  Linearize = (ast:AST) => {
+export const  Linearize = (ast:AST) => {
 
   const nodesmap = new Map<AST, ProgramNode>()
   const nodes: ProgramNode [] = []
@@ -174,11 +174,12 @@ const  Linearize = (ast:AST) => {
 }
 
 
-const WebGlCompiler = (nodes:ProgramNode[]) =>{
+export const WebGlCompiler = (nodes:ProgramNode[]) =>{
 
   function rep(node:ProgramNode):string{
-   if (node.usecount > 1) return node.name
-   return render(node)
+    if (node.ast.op == "const") return render(node)
+    if (node.usecount > 1) return node.name
+    return render(node)
   }
   
   function render(node:ProgramNode):string{
@@ -230,9 +231,6 @@ export const Time = new Input(1)
 let x = new Vector(1,2,3,4)
 let ss = x.sum().add(Pos).add(Time)
 
-console.log(WebGlCompiler(Linearize(ss.ast)))
-
-
 
 
 export class Renderer{
@@ -247,13 +245,11 @@ export class Renderer{
       graph = new Vector(graph, 1)
     }
     const nodes = Linearize(graph.ast)
-    console.log(nodes);
     
     const uniforms = nodes.filter(x=>x.ast.op == "uniform")
   
     {
       const gl = cavas.getContext("webgl2")
-      console.log(gl);
       
       if (!gl) throw new Error("webgl not suppported");
       this.gl = gl
@@ -283,17 +279,14 @@ varying vec2 pos;
 ${uniforms.map(u=>`uniform ${["float","vec2","vec3","vec4"][u.ast.vectype-1]} ${u.name};`).join("\n")}
 
 void main() {
-  ${WebGlCompiler(nodes)};
 
-}`  
-    console.log(fragShader);
-    
+${WebGlCompiler(nodes)};
 
-      console.log("frag shader compiled");
-
+}`
       console.log(fragShader);
-
       
+
+
 
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
       const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
@@ -307,15 +300,12 @@ void main() {
       }
       gl.useProgram(program);
 
-
       const posAttrLoc = gl.getAttribLocation(program, "a_position");
       const buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
       gl.enableVertexAttribArray(posAttrLoc);
       gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
-
-
 
       uniforms.forEach(u=>{
 
