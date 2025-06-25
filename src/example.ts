@@ -1,5 +1,5 @@
 import { htmlElement } from "./html";
-import { AstNode, Renderer, Pos, Input, Vec, dtypes, Const,Data } from "./shader";
+import { AstNode, Renderer, Pos, Input, Vector, dtypes, Const,Data } from "./shader";
 
 export {}
 
@@ -38,18 +38,18 @@ let tiles = angle.add(Rot.mul(0.5)).mul(5).sin()
 .mul(r.mul(5)
 .add(T.mul(5)).sin()).clamp(0,1)
 
-let color = Vec(1,3,6)
+let color = Vector(1,3,6)
 .add(T.mul(2.))
 .add(r.mul(0.1))
 .sin().mul(tiles)
 
-let relpos = Vec(r,angle)
+let relpos = Vector(r,angle)
 
-const PlayerAlpha = distance(relpos.sub(Vec(.5,0))).mul(-8).add(2).clamp(0,1)
-color = Mix(PlayerAlpha, color, Vec(1,0,0))
+const PlayerAlpha = distance(relpos.sub(Vector(.5,0))).mul(-8).add(2).clamp(0,1)
+color = Mix(PlayerAlpha, color, Vector(1,0,0))
 
 
-const renderer = new Renderer( Vec(color, 1), canvas)
+const renderer = new Renderer( Vector(color, 1), canvas)
 
 
 
