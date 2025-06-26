@@ -1,23 +1,16 @@
 
 let varcounter = 0;
 
-type Compiler = (ast:AST) => string
-
-
 type UOp = "sin" | "cos" | "tan" | "log" | "exp" | "atan"
 type BOp = "add" | "sub" | "mul" | "div" | "atan" | "pow"
 type TOp = "clamp"
-
-const uops:UOp[] = ["sin","cos","tan","log","exp","atan"]
-const bops:BOp[] = ["add","sub","mul","div","atan","pow"]
-const tops:TOp[] = ["clamp"]
 
 type VecType = 1 | 2 | 3 | 4
 
 type Op = UOp | BOp | TOp | "const" | "uniform" | "varying" | "vec" | "index"
 
 type AST =
-  ({op:"uniform", srcs:[], setValue?:(...v:number[])=>void}
+  ({op:"uniform", srcs:[], name:string}
   | {op:"varying", srcs:[], name:string}
   | {op: "vec", srcs:AST[]}
   | {op:"index", srcs:[AST], value:number}
@@ -26,16 +19,15 @@ type AST =
   | {op:BOp, srcs:[AST,AST]}
   | {op:TOp, srcs:[AST,AST,AST]}) & {vectype:VecType}
 
-
 type Data = AST | number
 type VecData = Data|Vector
-
 
 const upcast = (a:Data, vectype:VecType|null = null) :AST => {
   if (vectype == null) vectype = datatype(a)
   if (typeof a == "number") a = {op:"const", value:a, vectype:1, srcs:[]}
   if (a.vectype == vectype) return a
   if (a.vectype != 1) throw new Error("upcast not implemented for dtype " + vectype)
+  if (!(typeof a.op == "string")) throw new Error("upcast not implemented for " + a)
   return {op:"vec", srcs:Array.from({length: vectype}, ()=>a) as AST[], vectype:vectype}
 }
 
@@ -49,101 +41,81 @@ const broadcast = (srcs:Data[]) => {
   return {srcs: srcs.map(s=>upcast(s,vectype)), vectype}
 }
 
-const unaryFun = (op:UOp) =>
-(a:Data) :AST => {
-  return {op, ...broadcast([a])} as AST
-}
 
-const  binaryFun = (op:BOp) =>
-(a:Data, b:Data) :AST => {
-  return {op, ...broadcast([a,b])} as AST
-}
-
-const  ternaryFun = (op:TOp) =>
-(a:Data, b:Data, c:Data) :AST => {
-  return {op, ...broadcast([a,b,c])} as AST
-}
-
-const vec = (...args:Data[]) : AST =>{
-  let vs = args.map(a=>upcast(a))
-  if (vs.length == 1) return vs[0]
-  let typesum = vs.reduce((a,b)=>a+datatype(b), 0)
-  if (isNaN(typesum)) throw new Error("vec can only have 4 arguments")
-  if (typesum > 4) throw new Error("vec can only have 4 arguments")
-  return {op:"vec", srcs:vs, vectype:typesum as VecType}
-}
-
-
-const getter = (idx:number, a:Data) : AST => {
-  if (datatype(a) <= idx) throw new Error(`index ${idx} out of bounds for vec size ${datatype(a)}`)
-  return {op:"index", srcs:broadcast([a]).srcs, value:idx, vectype:1  } as AST
-}
-
-
-export const sin = unaryFun("sin")
-export const cos = unaryFun("cos")
-export const tan = unaryFun("tan")
-export const ln = unaryFun("log")
-
-export const exp = unaryFun("exp")
-
-export const add = binaryFun("add")
-export const sub = binaryFun("sub")
-export const mul = binaryFun("mul")
-export const div = binaryFun("div")
-export const pow = binaryFun("pow")
-export const atan = binaryFun("atan")
-export const clamp = ternaryFun("clamp")
-
-export const sqrt = (x:Data) => pow(x, 0.5)
-export const sum = (x:Data) => {
-  let res = getter(0,x)
-  for (let i = 1; i < datatype(x); i++) {res = add(res, getter(i, x))}
-  return res
-}
-export const length = (x:Data) => sqrt(sum(mul(x,x)))
-export const normalize = (x:Data) => div(x, length(x))
-
-const tanh = (x:Data) =>{
-  // return 2.0 / (1.0 + exp(-2.0 * x)) - 1.0;
-
-  return sub(div(2,add(1, exp(mul(x,-2)))),1)
-}
-
-
-
-const VecAst = (a:VecData) => a instanceof Vector ? a.ast : a
+const VecAst = (a:VecData):AST => a instanceof Vector ? a.ast : upcast(a)
 
 export class Vector{
   ast:AST
   vectype:VecType
-  constructor(...srcs:(Data|Vector)[]){
-    this.ast = vec(...srcs.map(VecAst))
+  inputs = new Set<Input>()
+  constructor(srcs:(Data|Vector)[] | VecData, op:Op = "vec"){
+    if (!(srcs instanceof Array))srcs = [srcs]
+    let asts = srcs.map(VecAst)
+    srcs.forEach(v=>{if (v instanceof Vector) v.inputs.forEach(i=>this.inputs.add(i))})
+
+    if (op == "vec"){
+      if (asts.length == 1){
+        this.ast = asts[0]
+
+      }else{
+        let vectype = asts.reduce((a,b)=>a+b.vectype, 0) as VecType
+        this.ast = {op, srcs: asts, vectype}
+      }
+    }else{
+      let {srcs,vectype} = broadcast(asts)
+      this.ast = {op, srcs, vectype} as AST
+    }
+    this.vectype = this.ast.vectype
     if (isNaN(this.ast.vectype)) throw new Error("vector must have 1,2,3 or 4 components")
     if (this.ast.vectype == undefined) throw new Error("vector must have 1,2,3 or 4 components")
-    this.vectype = this.ast.vectype
+    if (!(typeof this.ast.op =="string")) throw new Error("wrong ast type")
+
   }
-  sin(){return new Vector(sin(this.ast))}
-  cos(){return new Vector(cos(this.ast))}
-  tan(){return new Vector(tan(this.ast))}
-  log(){return new Vector(ln(this.ast))}
-  exp(){return new Vector(exp(this.ast))}
-  add(a:VecData){return new Vector(add(this.ast,VecAst(a)))}
-  sub(a:VecData){return new Vector(sub(this.ast,VecAst(a)))}
-  mul(a:VecData){return new Vector(mul(this.ast,VecAst(a)))}
-  div(a:VecData){return new Vector(div(this.ast,VecAst(a)))}
-  pow(a:VecData){return new Vector(pow(this.ast,VecAst(a)))}
-  atan(a:VecData){return new Vector(atan(this.ast,VecAst(a)))}
-  clamp(a:VecData, b:VecData){return new Vector(clamp(this.ast,VecAst(a),VecAst(b)))}
-  x(){return new Vector(getter(0,this.ast))}
-  y(){return new Vector(getter(1,this.ast))}
-  z(){return new Vector(getter(2,this.ast))}
-  w(){return new Vector(getter(3,this.ast))}
-  length(){return new Vector(length(this.ast))}
-  normalize(){return new Vector(normalize(this.ast))}
-  sum(){return new Vector(sum(this.ast))}
-  sqrt(){return new Vector(sqrt(this.ast))}
-  tanh(){return new Vector(tanh(this.ast))}
+  sin(){return new Vector([this], "sin")}
+  cos(){return new Vector([this], "cos")}
+  tan(){return new Vector([this], "tan")}
+  log(){return new Vector([this], "log")}
+  exp(){return new Vector([this], "exp")}
+
+  add(a:VecData){return new Vector([this, a], "add")}
+  sub(a:VecData){return new Vector([this, a], "sub")}
+  mul(a:VecData){return new Vector([this, a], "mul")}
+  div(a:VecData){return new Vector([this, a], "div")}
+  pow(a:VecData){return new Vector([this, a], "pow")}
+  atan(a:VecData){return new Vector([this, a], "atan")}
+  clamp(a:VecData, b:VecData){return new Vector([this, a, b], "clamp")}
+
+  static fromAst(ast:AST, inputs:Input[]|Set<Input>){
+    let vec = new Vector(ast)
+    inputs.forEach(i=>vec.inputs.add(i))
+    return vec
+  }
+
+  getter(idx:number){
+    if (idx >= this.vectype) throw new Error("index out of bounds")
+    return Vector.fromAst({op:"index", srcs:[this.ast], value:idx, vectype:1}, this.inputs)
+  }
+
+  x(){return this.getter(0)}
+  y(){return this.getter(1)}
+  z(){return this.getter(2)}
+  w(){return this.getter(3)}
+
+  length(){return this.square().sum().sqrt()}
+  normalize(){return this.div(this.length())}
+  sum(){
+    let vec = this.getter(0)
+    for (let i = 1; i < this.vectype; i++) {
+      vec = vec.add(this.getter(i))
+    }
+    return vec
+  }
+  sqrt(){return this.pow(0.5)}
+  square(){return this.pow(2)}
+  inv(){return this.pow(-1)}
+  tanh(){
+    return this.div(this.add(1).exp().add(1).exp().inv())
+  }
 }
 
 
@@ -162,8 +134,9 @@ export const  Linearize = (ast:AST) => {
       res.usecount += 1
       return res
     }
+
     const srcs = ast.srcs.map(walkast)
-    const name = ast.op == "varying" ? ast.name : "x" + nodes.length
+    const name = ast.op == "varying" || ast.op == "uniform" ? ast.name : "x" + nodes.length
     const node = {ast, srcs, name, usecount: 1}
     nodes.push(node)
     nodesmap.set(ast, node)
@@ -177,16 +150,14 @@ export const  Linearize = (ast:AST) => {
 export const WebGlCompiler = (nodes:ProgramNode[]) =>{
 
   function rep(node:ProgramNode):string{
-    if (node.ast.op == "const") return render(node)
-    if (node.usecount > 1) return node.name
-    return render(node)
+    if (node.ast.op == "const" || node.usecount <= 1) return render(node)
+    return node.name
   }
   
   function render(node:ProgramNode):string{
     const op = node.ast.op
     if (op == "uniform" || op == "varying") return node.name
     if (op == "const") {
-
       let res = node.ast.value.toString()
       if (!res.includes(".")) res += ".0"
       return res
@@ -207,16 +178,37 @@ export const WebGlCompiler = (nodes:ProgramNode[]) =>{
   }).join("") + "gl_FragColor = " +render(nodes[nodes.length-1])
 }
 
-
-
 export class Input extends Vector{
+  value:number[]
+  subscribers = new Set<(arg0: number[]) => void>()
+  name:string
 
   constructor(size:VecType){
-    super({op:"uniform", vectype: size, srcs:[], setValue: (...v:number[]) => {}})
+    const name = "input"+varcounter++
+    super({op:"uniform", vectype: size, srcs:[], name})
+    this.inputs.add(this)
+    this.name = name
+
+    this.value = Array.from({length:size}, ()=>0)
   }
 
-  setValue(...v:number[]){
-    (this.ast as {setValue:(...v:number[])=>void}).setValue(...v)
+  set(...v:number[]){
+    if (v.length != this.vectype) throw new Error("Input.set: wrong number of arguments")
+    this.value = v;
+    this.subscribers.forEach(s=>s(v))
+  }
+
+  subscribe(f:(arg0: number[]) => void){
+    f(this.value)
+    this.subscribers.add(f)
+  }
+
+  get(){
+    return this.value
+  }
+
+  update(f: (arg0: () => number[]) => number){
+    this.set(f(this.get))
   }
 
 }
@@ -227,29 +219,28 @@ export const Pos = Varying("pos", 2)
 export const Time = new Input(1)
 
 
-
-let x = new Vector(1,2,3,4)
-let ss = x.sum().add(Pos).add(Time)
-
-
+export function JsRunner (vec:Vector){
+  const nodes = Linearize(vec.ast)
+  const uniforms = nodes.filter(x=>x.ast.op == "uniform")
+  return
+}
 
 export class Renderer{
   gl:WebGLRenderingContext
-  constructor(graph:Vector, cavas:HTMLCanvasElement){
+  constructor(graph:Vector, canvas:HTMLCanvasElement){
     
     if (graph.vectype < 3){
       throw new Error("graph must result in vec3 got " + graph.vectype)
     }
 
     if (graph.vectype == 3){
-      graph = new Vector(graph, 1)
+      graph = new Vector([graph, 1])
     }
-    const nodes = Linearize(graph.ast)
-    
-    const uniforms = nodes.filter(x=>x.ast.op == "uniform")
+
+    const inputs = Array.from(graph.inputs)
   
     {
-      const gl = cavas.getContext("webgl2")
+      const gl = canvas.getContext("webgl2")
       
       if (!gl) throw new Error("webgl not suppported");
       this.gl = gl
@@ -263,7 +254,6 @@ export class Renderer{
         }
         return shader;
       }
-      
 
       const vertexShaderSource = `
       attribute vec2 a_position;
@@ -276,17 +266,13 @@ export class Renderer{
       const fragShader  =`
 precision mediump float;
 varying vec2 pos;
-${uniforms.map(u=>`uniform ${["float","vec2","vec3","vec4"][u.ast.vectype-1]} ${u.name};`).join("\n")}
+${inputs.map(u=>`uniform ${["float","vec2","vec3","vec4"][u.ast.vectype-1]} ${u.name};`).join("\n")}
 
 void main() {
 
-${WebGlCompiler(nodes)};
+${WebGlCompiler(Linearize(graph.ast))};
 
 }`
-      console.log(fragShader);
-      
-
-
 
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
       const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
@@ -307,17 +293,15 @@ ${WebGlCompiler(nodes)};
       gl.enableVertexAttribArray(posAttrLoc);
       gl.vertexAttribPointer(posAttrLoc, 2, gl.FLOAT, false, 0, 0);
 
-      uniforms.forEach(u=>{
-
-        const uf = u.ast as {setValue:(...v:number[])=>void, vectype:VecType}
-      
-        const loc = gl.getUniformLocation(program, u.name)
-        uf.setValue = (...v)=>{
+      inputs.forEach(u=>{
+        const uf = u.ast as {name:string, vectype:VecType, op:"varying"}
+        const loc = gl.getUniformLocation(program, uf.name)
+        u.subscribe((v)=>{
           ( (uf.vectype == 1) ? gl.uniform1f(loc, ...(v as[number,])):
             (uf.vectype == 2) ? gl.uniform2f(loc, ...(v as[number,number,])):
             (uf.vectype == 3) ? gl.uniform3f(loc, ...(v as[number,number,number,])):
-            gl.uniform4f(loc, ...(v as[number,number,number,number,])));}
-      })      
+            gl.uniform4f(loc, ...(v as[number,number,number,number,])));})
+      })
     }
   }
 
