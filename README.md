@@ -17,3 +17,5 @@ npm run dev
 
 edit main.ts to get started
 
+goal of this project is to unify js and shader computation. and make everything interactive and debuggable
+
