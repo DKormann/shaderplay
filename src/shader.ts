@@ -171,8 +171,12 @@ export class Vector{
     return e.sub(e2).div(e.add(e2))
   }
 
+  atanh(){
+    return (this.add(1).div(this.sub1())).log().mul(.5)
+  }
+
   sigmoid(){
-    return this.neg().exp().inv() 
+    return this.neg().exp().add(1).inv() 
   }
 
   compute(pos:[number,number] = [0,0]):number[]{
@@ -227,15 +231,32 @@ export const WebGlCompiler = (nodes:ProgramNode[]) =>{
       let res = node.ast.value.toString()
       if (!res.includes(".")) res += ".0"
       return res
-    } 
-    if (op == "vec") return `vec${node.ast.vectype}(${node.srcs.map(x=>rep(x)).join(",")})`
+    }
+
+    const typ = ["float","vec2","vec3","vec4"][node.ast.vectype-1]
+
+
+    if (op == "vec") return `${typ}(${node.srcs.map(x=>rep(x)).join(",")})`
     if (op == "index") return `${rep(node.srcs[0])}.${["x","y","z","w"][node.ast.value]}`
-    if (op == "add") return `( ${rep(node.srcs[0])} + ${rep(node.srcs[1])})`
+    if (op == "add") return `(${rep(node.srcs[0])} + ${rep(node.srcs[1])})`
     if (op == "sub") return `(${rep(node.srcs[0])} - ${rep(node.srcs[1])})`
     if (op == "mul") return `(${rep(node.srcs[0])} * ${rep(node.srcs[1])})`
     if (op == "div") return `(${rep(node.srcs[0])} / ${rep(node.srcs[1])})`
     if (op == "mod") return `mod(${rep(node.srcs[0])}, ${rep(node.srcs[1])})`
-    if (op == "lt") return `float(${rep(node.srcs[0])} < ${rep(node.srcs[1])})`
+
+    if (op == "lt") return elemwise((a,b)=>`${a} < ${b} ? 1.0 : 0.0`)
+
+    function elemwise(fn:(a:string, b:string)=>string){
+      const [a,b] = node.srcs.map(rep)
+      if (node.srcs[0].ast.vectype == 1) return `(${fn(a,b)})`
+      const parts = []
+      for (let i = 0; i < node.srcs[0].ast.vectype; i++) {
+        const field = ["x","y","z","w"][i]
+        parts.push(`${fn(`${a}.${field}`, `${b}.${field}`)}`)
+      }
+      return `${typ}(${parts.join(", ")})`
+    }
+
     return `${op}(${node.srcs.map(x=>rep(x)).join(", ")})`
   }
 
@@ -297,9 +318,7 @@ export const JSCompiler = (vec:Vector) => {
     const elem_app = (f:(arg0: string[])=>string)=>{
       let res = []
 
-      if (node.ast.vectype == 1){
-        return f(srcs)
-      }
+      if (node.ast.vectype == 1)return f(srcs)
       for (let i = 0; i < node.ast.vectype; i++) {
         res.push(f(srcs.map(s=>`${s}[${i}]`)))
       }
@@ -320,6 +339,7 @@ export const JSCompiler = (vec:Vector) => {
       case "div": return elem_app(s=>`(${s[0]} / ${s[1]})`)
       case "mod": return elem_app(s=>`(${s[0]} % ${s[1]})`)
       case "pow": return elem_app(s=>`(${s[0]} ** ${s[1]})`)
+      case "lt": return elem_app(s=>`(${s[0]} < ${s[1]} ? 1. : 0.)`)
       case "atan": return app_fn("Math.atan2")
       case "sin": return app_fn("Math.sin")
       case "cos": return app_fn("Math.cos")
@@ -327,11 +347,11 @@ export const JSCompiler = (vec:Vector) => {
       case "log": return app_fn("Math.log")
       case "exp": return app_fn("Math.exp")
       case "clamp": return elem_app(s=>`Math.min(Math.max(${s[0]}, ${s[1]}), ${s[2]})`)
-      case "lt": return elem_app(s=>`(${s[0]} < ${s[1]})`)
       default:
         throw new Error("JSCompiler: unknown op " + op)
     }
   }
+
 
   const codeinner = "  " + nodes.map(n =>{
     if (["uniform", "varying", "const"].includes(n.ast.op)) return ""
@@ -353,11 +373,13 @@ export class Renderer{
 
   gl:WebGLRenderingContext
   canvas:HTMLCanvasElement
-  constructor(graph:Vector, canvas:HTMLCanvasElement){
+  constructor(graphs:Vector[], canvas:HTMLCanvasElement){
+
+    let graph = vector(...graphs)
 
     if (graph.vectype == 1) graph = vector(graph, graph, graph)
     if (graph.vectype == 2) graph = vector(graph, 0)
-    if (graph.vectype == 3)graph = vector(graph, 1)
+    if (graph.vectype == 3) graph = vector(graph, 1)
 
     canvas.addEventListener("click", (e)=>{
       let y = canvas.clientHeight - e.offsetY
@@ -405,7 +427,7 @@ ${WebGlCompiler(nodes)}
 
 }`
 
-      console.log(fragShader);
+      // console.log(fragShader);
       const vs = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
       const fs = compileShader(fragShader, gl.FRAGMENT_SHADER);
       
