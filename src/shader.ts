@@ -2,8 +2,9 @@
 let varcounter = 0;
 
 type UOp = "sin" | "cos" | "tan" | "log" | "exp"
-type BOp = "add" | "sub" | "mul" | "div" | "atan" | "pow" | "lt"
+type BOp = "add" | "sub" | "mul" | "div" | "atan" | "pow" | "lt" | "mod"
 type TOp = "clamp"
+
 
 type VecType = 1 | 2 | 3 | 4
 
@@ -110,6 +111,7 @@ export class Vector{
   mul(...a:veclike[]){return Vector.from([this, a], "mul")}
   lt(...a:veclike[]){return Vector.from([this, a], "lt")}
   div(...a:veclike[]){return Vector.from([this, a], "div")}
+  mod(...a:veclike[]){return Vector.from([this, a], "mod")}
 
   pow(a:veclike){return Vector.from([this, a], "pow")}
   atan(...a:veclike[]){return Vector.from([this, a], "atan")}
@@ -152,6 +154,8 @@ export class Vector{
   complement(){return vector(1).sub(this)}
 
   sum(){return this.reduce((a,b)=>a.add(b))}
+  prod(){return this.reduce((a,b)=>a.mul(b))}
+
   max(){return this.reduce((a,b)=>a.maximum(b))}
   min(){return this.reduce((a,b)=>a.minimum(b))}
 
@@ -174,6 +178,10 @@ export class Vector{
   compute(pos:[number,number] = [0,0]):number[]{
     return JsRunner(this)(pos)
   }
+
+  frac(){return this.mod(1)}
+  floor(){return this.sub(this.frac())}
+  steps(n:veclike){return this.mul(n).floor().div(n)}
 }
 
 
@@ -226,6 +234,7 @@ export const WebGlCompiler = (nodes:ProgramNode[]) =>{
     if (op == "sub") return `(${rep(node.srcs[0])} - ${rep(node.srcs[1])})`
     if (op == "mul") return `(${rep(node.srcs[0])} * ${rep(node.srcs[1])})`
     if (op == "div") return `(${rep(node.srcs[0])} / ${rep(node.srcs[1])})`
+    if (op == "mod") return `mod(${rep(node.srcs[0])}, ${rep(node.srcs[1])})`
     if (op == "lt") return `float(${rep(node.srcs[0])} < ${rep(node.srcs[1])})`
     return `${op}(${node.srcs.map(x=>rep(x)).join(", ")})`
   }
@@ -309,6 +318,7 @@ export const JSCompiler = (vec:Vector) => {
       case "mul": return elem_app(s=>s.join(" * "))
       case "sub": return elem_app(s=>`(${s[0]} - ${s[1]})`)
       case "div": return elem_app(s=>`(${s[0]} / ${s[1]})`)
+      case "mod": return elem_app(s=>`(${s[0]} % ${s[1]})`)
       case "pow": return elem_app(s=>`(${s[0]} ** ${s[1]})`)
       case "atan": return app_fn("Math.atan2")
       case "sin": return app_fn("Math.sin")
@@ -431,3 +441,5 @@ ${WebGlCompiler(nodes)}
     this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
   }  
 }
+
+
