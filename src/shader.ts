@@ -171,7 +171,7 @@ export class Vector{
     return e.sub(e2).div(e.add(e2))
   }
 
-  atanh(){
+   atanh(){
     return (this.add(1).div(this.sub1())).log().mul(.5)
   }
 
