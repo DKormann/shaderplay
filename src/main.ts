@@ -1,13 +1,12 @@
-
-
 import { htmlElement } from "./html"
-import {Vector, Input, Renderer, Pos, Linearize, WebGlCompiler, JsRunner, JSCompiler, Resolution, vector} from "./shader"
+import {Vector, Input, Renderer, Pos, Linearize, WebGlCompiler, JsRunner, JSCompiler, Resolution, vector, veclike} from "./shader"
 
+let boxes = []
+const isMobile = navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|IEMobile)/) ? true : false
 
-export function display(...graphs:Vector[]){
+export function display(...graphs:veclike[]){
 
   let laststeer = ""
-  
   const canvas = htmlElement("canvas", "", "", {class:"glcanvas"}) as HTMLCanvasElement
   canvas.width = isMobile ? window.innerWidth : 500
   canvas.height = isMobile ? window.innerHeight : 500
@@ -24,30 +23,36 @@ export function display(...graphs:Vector[]){
 
   document.body.appendChild(canvas)
   boxes.push(new Renderer(graphs, canvas))
-
-
 }
 
-let boxes = []
+const twopi = Math.PI * 2
 
-const isMobile = navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|IEMobile)/) ? true : false
 
+const rand = (t:Vector) =>{return t.add(2.4).mul(435.23).sin().mul(34).abs().frac()}
 
 
 let P = Pos.fields.xy
+
 let Time = new Input(1)
-let PlayerPos = new Input(2)
+
+let TimeCycle = new Input(1)
+Time.subscribe(t=>TimeCycle.set(t[0]/100%1))
+
+let PlayerProgress = new Input(1)
+let PlayerRot = new Input(1)
 
 
-const rand = t =>{return t.add(2.4).mul(435.23).sin().mul(34).abs().frac()}
+let PlayerCycle = new Input(1)
 
-let bolts : Vector
+PlayerProgress.subscribe(p=>{
+  PlayerCycle.set(p[0]/100%1)
+})
 
-
-let playerpix = [0,0]
-
+let Time1K = new Input(1)
+Time.subscribe(t=>Time1K.set(t[0] / 1000))
 
 let RelP = P.mul(2).sub(Resolution).div(Resolution.min())
+
 
 P = vector(
   RelP.fields.x.atan(RelP.fields.y.neg()),
@@ -55,62 +60,68 @@ P = vector(
 )
 
 let playercoord = P.add(0,0.3).div(.2)
-playercoord.onclick="playercoord"
-
-// logplayercoord
-
-
-
 let playerR = playercoord.length()
-let playeroutline = playerR.sub1().mul(100).sigmoid()
-
 
 let refy = playerR.square()
 .mul(2).sub(1).clamp(-.999,0.999).atanh().neg()
 let refx = playercoord.fields.x.atan(playercoord.fields.y)
 
-P = playeroutline.mix(vector(refx, refy),P);
+let Pl = P.add(refx, refy)
 
-P = P.add(PlayerPos)
+P = playerR.sub1().mul(100).sigmoid().mix(Pl,P);
+
+P = P.sub(PlayerRot, 0)
+
 P = vector(P.fields.x.mod(2*Math.PI), P.fields.y)
 
-let tx = P.fields.x.div(3.1415*2)
-for (let i = 0; i <6; i++){
-  let k = 1.8**i
-  tx = tx.add(P.fields.y.mul(k*.2).frac().sub(.5).abs().div(k*2))
+
+
+
+
+
+
+// let tx = P.fields.x.div(3.1415*2)
+// for (let i = 0; i <6; i++){
+//   let k = 1.8**i
+//   tx = tx.add(P.fields.y.mul(k*.2).frac().sub(.5).abs().div(k*2))
+// }
+
+
+
+let xx = P.fields.x
+
+xx.onclick ="xx"
+// console.log(JSCompiler(xx));
+
+
+display(xx)
+
+
+
+
+let cyc = PlayerCycle.sub(P.fields.y.mul(0.01)).add(0,.25).mod(1).mul(twopi).sin().mul(20).sin().sum()
+
+
+let cloud = vector(P.fields.x, cyc)
+
+display(cloud.sin())
+
+for (let i = 1; i<7; i++){
+  cloud = cloud.add(
+    cloud.fields.yx.mul(vector(4,3).add(i)).sin().div(i*2)
+  )
+  .add(TimeCycle.mul(1+i*30).sin().div(i*2))
 }
 
-bolts = vector(
-  tx.mod(1),
-  P.fields.y
-  .sub(Time)
-)
+display(cloud.sin().square())
 
-const xsteps = 32
-bolts = bolts
-.mul(xsteps,.5)
-.add(0, bolts.fields.x.steps(xsteps).mul(5.34))
 
-bolts = bolts.abs().frac().mul(2).sub(1).abs().sub1().mul(1,2).clamp(0,1).square().prod()
-.mul(rand(bolts.floor().mul(12.3,4.1).sum()).lt(0.1))
+let dim = P.fields.y.add(cloud.fields.y.mul(.3)).add(1).sigmoid()
 
-for (let i = 1; i<6; i++){
-  P = P.add(
-    P.fields.yx.mul(vector(4,3).add(i)).sin().div(i*2)
-  ).add(Time.mul(.2,.1).mul(i+0.4).sin().div(i+2.3))
-}
-let color = P.fields.x.add(vector(0,1,4)).sin().add(vector(2,2,3)).normalize()
 
-let dim = P.fields.y.sub(PlayerPos.fields.y).add(1).sigmoid()
-dim.onclick="dim"  
-
-let world = bolts.mix([1,.2,.2], color.mul(dim))
+// let world = bolts.mix([1,.2,.2], P.fields.x.add(vector(0,1,4)).sin().add(vector(2,2,3)).normalize().mul(dim))
+let world = cloud.fields.x.add(vector(0,1,4)).sin().add(vector(2,2,3)).normalize().mul(dim)
 display(world)
-
-
-
-
-
 
 const keymap = new Map<string, boolean>()
 document.addEventListener("keydown", e=>{
@@ -119,38 +130,29 @@ document.addEventListener("keydown", e=>{
 })
 document.addEventListener("keyup", e=>keymap.set(e.key, false))
 
-const twopi = Math.PI * 2
+PlayerProgress.set(1_600_000)
+
 
 function render(time:number){
-
-
 
   let delta = 0;
 
   Time.update(t=>{
     time *= 0.001
     delta = time - t[0]
-    return [time]
+    return [time ]
   })
 
+  let dx = - (keymap.get("ArrowRight") ?? false ? 1 : 0) + (keymap.get("ArrowLeft") ?? false ? 1 : 0)
+  let dy = - (keymap.get("ArrowDown") ?? false ? 1 : 0) + (keymap.get("ArrowUp") ?? false ? 1 : 0)
 
-  let dx = (keymap.get("ArrowRight") ?? false ? 1 : 0) - (keymap.get("ArrowLeft") ?? false ? 1 : 0)
-  let dy = (keymap.get("ArrowDown") ?? false ? 1 : 0) - (keymap.get("ArrowUp") ?? false ? 1 : 0)
+  if (isMobile) dy = 1
 
-  
-
-  PlayerPos.update(p=>
-    [
-      ((p[0] + delta * dx * 1) % twopi + twopi) % twopi,
-      p[1] + delta * (dy + (isMobile? -1 :0)),
-    ])
-
-  
+  PlayerRot.update(r=>[((r[0] + delta * dx) % twopi + twopi) % twopi ])
+  PlayerProgress.update(p=>[p[0] + delta * dy])
 
   boxes.forEach(b=>b.render())
   requestAnimationFrame(render)
 }
 render(0)
-
-console.log(playercoord.compute(playerpix as [number, number]));
 

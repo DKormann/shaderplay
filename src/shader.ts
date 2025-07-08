@@ -21,7 +21,7 @@ type AST =
   | {op:TOp, srcs:[AST,AST,AST]}) & {vectype:VecType}
 
 
-type veclike = Vector | AST | number | veclike[]
+export type veclike = Vector | AST | number | veclike[]
 
 const upcast = (a:AST, vectype:VecType) :AST => {
   if (a.vectype == vectype) return a
@@ -337,7 +337,7 @@ export const JSCompiler = (vec:Vector) => {
       case "mul": return elem_app(s=>s.join(" * "))
       case "sub": return elem_app(s=>`(${s[0]} - ${s[1]})`)
       case "div": return elem_app(s=>`(${s[0]} / ${s[1]})`)
-      case "mod": return elem_app(s=>`(${s[0]} % ${s[1]})`)
+      case "mod": return elem_app(s=>`(${s[0]} % ${s[1]} + ${s[1]}) % ${s[1]}`)
       case "pow": return elem_app(s=>`(${s[0]} ** ${s[1]})`)
       case "lt": return elem_app(s=>`(${s[0]} < ${s[1]} ? 1. : 0.)`)
       case "atan": return app_fn("Math.atan2")
@@ -373,7 +373,7 @@ export class Renderer{
 
   gl:WebGLRenderingContext
   canvas:HTMLCanvasElement
-  constructor(graphs:Vector[], canvas:HTMLCanvasElement){
+  constructor(graphs:veclike[], canvas:HTMLCanvasElement){
 
     let graph = vector(...graphs)
 
@@ -416,7 +416,7 @@ export class Renderer{
       }`;
       
       const fragShader  =`
-precision mediump float;
+precision lowp float;
 ${inputs.map(u=>`uniform ${["float","vec2","vec3","vec4"][u.ast.vectype-1]} ${u.name};`).join("\n")}
 
 
